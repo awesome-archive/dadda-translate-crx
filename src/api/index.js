@@ -1,22 +1,58 @@
+import { google as googleTranslate } from 'translation.js'
 import { google, sougou, shanbay, cdn, youdao } from './client'
+import axios from 'axios'
 import { _sougouUuid } from '@/utils'
 import md5 from 'md5'
+import { DADDA_ERRORS } from '../utils/constant'
 
-let token = 'b33bf8c58706155663d1ad5dba4192dc'
+window.seccode = 8511813095152
+
+function _encodeReplacer(match) {
+  return encodeURIComponent(match)
+}
+
+function _escape(text) {
+  return (
+    text
+      // All speical characters should be encoded
+      .replace(
+        /* eslint-disable no-useless-escape */
+        /[\[\]\,.?"\(\)_*\/\\&\$#^@!%~`<>:;\{\}？，。·！￥……（）｛｝【】、|《》]/gi,
+        _encodeReplacer
+      )
+      .replace(/[+]/g, _encodeReplacer)
+      // All space should convert to +
+      .replace(/\s/gi, '+')
+  )
+}
+
+// 获取 seccode
+async function getSeccode() {
+  const { data: tokenInsertScript } = await axios.get(
+    'https://fanyi.sogou.com/logtrace',
+    { withCredentials: true }
+  )
+
+  // eslint-disable-next-line no-eval
+  eval(tokenInsertScript)
+}
+
 export default {
   sougouTranslate(text) {
+    getSeccode()
     const from = 'auto'
     const to = 'zh-CHS'
-    // 搜狗 API 新增加的一个字段，后面固定的 `front_xxxxx` 目前意义不明
-    const s = md5('' + from + to + text + token)
-    text = encodeURIComponent(text).replace(/%20/g, '+')
+
+    const textAfterEscape = _escape(text)
+
+    const s = md5('' + from + to + text + window.seccode)
 
     const payload = {
       from,
       to,
       client: 'pc',
       fr: 'browser_pc',
-      text,
+      text: textAfterEscape,
       useDetect: 'on',
       useDetectResult: 'on',
       needQc: 1,
@@ -32,17 +68,34 @@ export default {
       .join('&')
 
     return sougou.post('/reventondc/translate', data).then(async res => {
-      if (res.errorCode === 0) return res
-      // 如果翻译失败,尝试从js源码中获取token
-      let s = await sougou.get('/')
-      let m = /js\/app\.([^.]+)/.exec(s)
-      if (!m) throw res
-      s = await sougou.get('https://dlweb.sogoucdn.com/translate/pc/static/js/app.' + m[1] + '.js')
-      m = /""\+\w\+\w\+\w\+"(\w{32})"/.exec(s)
-      if (!m) throw res
-      if (token === m[1]) throw res
-      token = m[1]
-      return this.sougouTranslate(text)
+      const { errorCode } = res.translate
+
+      if (errorCode === '10') {
+        // Seccode not valid
+        const lastSecode = window.seccode
+
+        await getSeccode()
+
+        if (window.seccode === lastSecode) {
+          throw res
+        } else {
+          return this.sougouTranslate(text)
+        }
+      } else if (errorCode === '20') {
+        const googleRes = await googleTranslate.translate(text)
+        const { result = [] } = googleRes
+        const resultStr = result.join('')
+
+        return {
+          translate: {
+            errorCode: DADDA_ERRORS.VERIFICATION_NEEDED,
+            dit: resultStr,
+            source: 'google'
+          }
+        }
+      }
+
+      return res
     })
   },
 

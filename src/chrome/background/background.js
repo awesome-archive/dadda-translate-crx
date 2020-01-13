@@ -9,7 +9,7 @@ import Toast from '@/chrome/toast'
 import setNewAlarm from '@/chrome/alarm'
 
 import { _removeTRId, _hasTRId, _wrapTRId, _sleep } from '@/utils'
-import { DICTIONARY_HOST } from '@/api/host'
+import { DICTIONARY_HOST, SOGOU_HOST } from '@/api/host'
 import {
   DELAY_MINS_IN_EVERY_STAGE,
   TR_SETTING_HAS_TOAST_KEY,
@@ -23,8 +23,10 @@ import {
   TR_SETTING_YOUDAO,
   TR_SETTING_ENGLISH_MEANING,
   TR_SETTING_KEYBOARD_CONTROL,
+  TR_SETTING_ONLY_OXFORD,
   TR_SETTING_LASTING_TOAST,
   TR_SETTING_CALLOUT_INPUT,
+  TR_SETTING_HIDE_CONTEXT_MENU_OPTION,
   TR_SETTING_CLOSE_ALL_TOAST_KEY
 } from '@/utils/constant'
 
@@ -46,7 +48,9 @@ const moveWord2NextStage = async word => {
 const detectGo = () => {
   Storage.get(TR_SETTING_IS_DIRECTLY_KEY, false).then(isDirectly => {
     chrome.browserAction.setBadgeText({ text: isDirectly ? 'go' : '' })
-    chrome.browserAction.setBadgeBackgroundColor({ color: isDirectly ? '#ed559d' : '#fff' })
+    chrome.browserAction.setBadgeBackgroundColor({
+      color: isDirectly ? '#ed559d' : '#fff'
+    })
   })
 }
 
@@ -66,14 +70,19 @@ chrome.runtime.onInstalled.addListener(async reason => {
     Storage.set(TR_SETTING_KEYBOARD_CONTROL, false)
     Storage.set(TR_SETTING_FONT_FAMILY, 'song')
     Storage.set(TR_SETTING_CLOSE_ALL_TOAST_KEY, false)
+    Storage.set(TR_SETTING_ONLY_OXFORD, false)
+
+    Storage.set(TR_SETTING_HIDE_CONTEXT_MENU_OPTION, false)
 
     Storage.set(TR_SETTING_LASTING_TOAST, false)
     Storage.set(TR_SETTING_CALLOUT_INPUT, false)
   } else {
     const { version } = require('@/manifest.json')
+
     chrome.notifications.clear('updateInfo')
     chrome.notifications.create('updateInfo', {
-      iconUrl: 'https://raw.githubusercontent.com/waynecz/dadda-translate-crx/master/src/assets/logo.png',
+      iconUrl:
+        'https://raw.githubusercontent.com/waynecz/dadda-translate-crx/master/src/assets/logo.png',
       type: 'basic',
       title: `${version} 更新：`,
       message: require('@/changelog-breif.json')[version] || '点击查看更新内容',
@@ -174,6 +183,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendRes) => {
       return true
     }
 
+    case 'jumpToSogou': {
+      // Request is considered as a spider
+      chrome.tabs.create({
+        url: 'https://fanyi.sogou.com'
+      })
+      return true
+    }
+
     /**
      * @summary 用来测试样一些非 content 页面的打点之类的
      */
@@ -254,7 +271,9 @@ chrome.notifications.onButtonClicked.addListener(async (notiId, btnId) => {
  */
 chrome.notifications.onClicked.addListener(async notiId => {
   if (notiId === 'updateInfo') {
-    chrome.tabs.create({ url: 'https://github.com/waynecz/dadda-translate-crx/releases' })
+    chrome.tabs.create({
+      url: 'https://github.com/waynecz/dadda-translate-crx/releases'
+    })
   }
 
   if (_hasTRId(notiId)) {
@@ -272,14 +291,63 @@ chrome.notifications.onClicked.addListener(async notiId => {
 /**
  * @summary 注册右键点击翻译
  */
-chrome.contextMenus.create({
-  'title': '达达达....',
-  'contexts': ['selection', 'page'],
-  'onclick': (info, tab) => {
-    if (info.selectionText) {
-      chrome.tabs.executeScript({
-        code: 'document.dispatchEvent(new CustomEvent(\'contextMenuClick\', { bubbles: true, detail: { text: "' + info.selectionText + '" } }))'
-      })
-    }
+
+Storage.get(TR_SETTING_HIDE_CONTEXT_MENU_OPTION, false).then(value => {
+  if (!value) {
+    chrome.contextMenus.create({
+      title: '达达划词翻译',
+      contexts: ['selection', 'page'],
+      onclick: (info, tab) => {
+        if (info.selectionText) {
+          chrome.tabs.executeScript({
+            code:
+              "document.dispatchEvent(new CustomEvent('contextMenuClick', { bubbles: true, detail: { text: \"" +
+              info.selectionText +
+              '" } }))'
+          })
+        }
+      }
+    })
   }
 })
+
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  details => {
+    const refererIndex = details.requestHeaders.findIndex(({ name }) => {
+      return name.toLowerCase() === 'referer'
+    })
+
+    const corsModeIndex = details.requestHeaders.findIndex(({ name }) => {
+      return name.toLowerCase() === 'sec-fetch-mode'
+    })
+
+    const originIndex = details.requestHeaders.findIndex(({ name }) => {
+      return name.toLowerCase() === 'origin'
+    })
+
+    if (refererIndex === -1) {
+      details.requestHeaders.push({ name: 'Referer', value: SOGOU_HOST })
+    } else {
+      details.requestHeaders[refererIndex].value = SOGOU_HOST
+    }
+
+    if (corsModeIndex !== -1) {
+      details.requestHeaders[corsModeIndex].value = 'no-cors'
+    }
+
+    if (originIndex === -1) {
+      details.requestHeaders.push({ name: 'Origin', value: SOGOU_HOST })
+    } else {
+      details.requestHeaders[originIndex].value = SOGOU_HOST
+    }
+
+    return { requestHeaders: details.requestHeaders }
+  },
+  {
+    urls: [
+      'https://fanyi.sogou.com/reventondc/translate',
+      'https://fanyi.sogou.com/logtrace'
+    ]
+  },
+  ['requestHeaders', 'blocking', 'extraHeaders']
+)

@@ -1,6 +1,6 @@
 {
   "name": "dadda-translate",
-  "version": "1.2.4",
+  "version": "1.2.16",
   "description": "translate and remember",
   "scripts": {
     "dev": "node_modules/.bin/webpack --progress --config build/webpack.dev.js",
@@ -29,6 +29,7 @@
     "react-redux": "^5.0.7",
     "react-toastify": "^4.0.2",
     "redux": "^3.7.2",
+    "translation.js": "^0.7.12",
     "url-parse": "^1.4.0",
     "vue": "^2.5.13"
   },
@@ -48,8 +49,10 @@
     "css-loader": "^0.28.10",
     "eslint": "^4.18.1",
     "eslint-config-standard": "^11.0.0",
+    "eslint-plugin-prettier": "3.1.0",
     "eslint-friendly-formatter": "^3.0.0",
     "eslint-loader": "^2.0.0",
+    "eslint-plugin-vue": "5.2.3",
     "eslint-plugin-html": "^4.0.2",
     "eslint-plugin-import": "^2.9.0",
     "eslint-plugin-node": "^6.0.1",
@@ -59,6 +62,7 @@
     "extract-text-webpack-plugin": "^4.0.0-beta.0",
     "file-loader": "^1.1.11",
     "html-webpack-plugin": "^3.0.4",
+    "prettier": "1.14.3",
     "sass": "^1.18.0",
     "sass-loader": "^7.1.0",
     "url-loader": "^1.0.1",
